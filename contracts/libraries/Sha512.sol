@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity ^0.6.8;
+pragma solidity ^0.8.24;
 
 // Reference: https://csrc.nist.gov/csrc/media/publications/fips/180/2/archive/2002-08-01/documents/fips180-2.pdf
 
@@ -66,7 +66,9 @@ library Sha512 {
     // @param n num of positions to circular shift
     // @return uint64
     function ROTR(uint64 x, uint256 n) internal pure returns (uint64) {
-        return (x << (64 - n)) + (x >> n);
+        unchecked {
+            return (x << (64 - n)) + (x >> n);            
+        }
     }
 
     // @notice: The right shift operation SHR n(x), where x is a w-bit word and n is an integer with 0 <= n < w, is defined by SHR(x, n) = x >> n.
@@ -259,7 +261,9 @@ library Sha512 {
             fvar.f = H[5];
             fvar.g = H[6];
             fvar.h = H[7];
-
+            unchecked {
+                
+            
             for (uint256 i = 0; i < 80; i++) {
                 if (i < 16) {
                     W[i] = M[i];
@@ -297,6 +301,7 @@ library Sha512 {
             H[5] = H[5] + fvar.f;
             H[6] = H[6] + fvar.g;
             H[7] = H[7] + fvar.h;
+        }
         }
 
         return H;

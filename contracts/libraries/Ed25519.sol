@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity ^0.6.8;
+pragma solidity ^0.8.24;
 
 import "./Sha512.sol";
 
@@ -280,6 +280,9 @@ library Ed25519 {
         bytes memory m
     ) internal pure returns (bool) {
             uint256 hh;
+            unchecked {
+                
+            
             // Step 1: compute SHA-512(R, A, M)
             {
                 bytes memory rs = new bytes(k.length + r.length + m.length);
@@ -880,5 +883,7 @@ library Ed25519 {
             );
             vr = bytes32((uint256(vr) << 128) | (uint256(vr) >> 128));
             return vr == r;
+    
+        }
     }
 }
