@@ -2,9 +2,9 @@
 pragma solidity ^0.8.24;
 pragma experimental ABIEncoderV2;
 
-import "../libraries/Ed25519.sol";
+import "./libraries/Ed25519.sol";
 
-contract TestEd25519 {
+contract Ed25519Verify {
     function verify(
         bytes32 k,
         bytes32 r,
