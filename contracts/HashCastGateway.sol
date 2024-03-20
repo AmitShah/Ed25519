@@ -33,7 +33,7 @@ contract HashCastGateway is EIP712{
     //the linear emission rate of rewards over time
     uint256 public rewardPerBlock;
     mapping(bytes32=>uint256) edPubKeyBlockClaimBlock;
-    mapping(string=>uint256) edPubKeyCastTransfer;
+    mapping(bytes32=>uint256) transfer;
     mapping(bytes32=>uint256) edPubKeyNonce;
 
     // Total staked
@@ -106,20 +106,22 @@ contract HashCastGateway is EIP712{
 
     //transfer to user or anything really
     //to is a blake3 160 bit hash, so we can store it in an address field
-    function transferToCast(bytes32 k, string calldata to, uint256 amount, bytes32 r, bytes32  s) public {
+    function transferTo(bytes32 k, bytes32 to, uint256 amount, bytes32 r, bytes32  s) public {
         bytes memory digest = abi.encodePacked(_hashTypedDataV4(keccak256(abi.encode(
-          keccak256("Transfer(uint256 amount,bytes32 from,string to)"),
-          amount,k,keccak256(abi.encodePacked(to))))));
+          keccak256("Transfer(uint256 amount,bytes32 from,bytes32 to)"),
+          amount,k,to))));
         console.log("digest:");
         console.logBytes(digest);
         bool valid = verifyEddsa(k, r, s, digest);
         require(valid,"invalid signature");
 
-        require(edPubKeyCastTransfer[to]==0,"already transferred to cast");
+
+       //Allow continuous transfer ? 
+        //require(transfer[to]==0,"already transferred to cast");
 
         //TODO: transfer 
 
-        edPubKeyCastTransfer[to]=amount;
+        transfer[to]=amount;
     }
 
     function lastTimeRewardApplicable() public view returns (uint256) {
