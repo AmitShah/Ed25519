@@ -886,4 +886,8 @@ library Ed25519 {
     
         }
     }
+
+    function getVirtualAddress(bytes32 publicKey) internal pure returns (address addr) {
+        return address(uint160(uint256(keccak256(abi.encodePacked(publicKey)))));
+    }
 }

@@ -2,201 +2,104 @@
 pragma solidity ^0.8.24;
 
 import "@thirdweb-dev/contracts/external-deps/openzeppelin/utils/cryptography/EIP712.sol";
-pragma experimental ABIEncoderV2;
-
+import "@thirdweb-dev/contracts/extension/Ownable.sol";
 import "./libraries/Ed25519.sol";
 import "hardhat/console.sol";
+import "./interfaces/IHashCastKarma.sol";
+import "@thirdweb-dev/contracts/external-deps/openzeppelin/utils/Counters.sol";
 
-contract HashCastGateway is EIP712{
-    IERC20 public immutable stakingToken;
-    IERC20 public immutable rewardsToken;
+pragma experimental ABIEncoderV2;
 
-    address public owner;
-
-    // Duration of rewards to be paid out (in seconds)
-    uint256 public duration;
-    // Timestamp of when the rewards finish
-    uint256 public finishAt;
-    // Minimum of last updated time and reward finish time
-    uint256 public updatedAt;
-    // Reward to be paid out per second
-    uint256 public rewardRate;
-    // Sum of (reward rate * dt * 1e18 / total supply)
-    uint256 public rewardPerTokenStored;
-
-  
-    // User address => rewardPerTokenStored
-    mapping(address => uint256) public userRewardPerTokenPaid;
-    // User address => rewards to be claimed
-    mapping(address => uint256) public rewards;
+contract HashCastGateway is EIP712, Ownable{
+    using Counters for Counters.Counter;
+    IERC20 public immutable karmaToken;
 
     //the linear emission rate of rewards over time
     uint256 public rewardPerBlock;
-    mapping(bytes32=>uint256) edPubKeyBlockClaimBlock;
-    mapping(string=>uint256) edPubKeyCastTransfer;
-    mapping(bytes32=>uint256) edPubKeyNonce;
+    mapping(address=>uint256) edPubKeyBlockClaimBlock;
+    mapping(address=>uint256) edPubKeyCastTransfer;
+    mapping(address => Counters.Counter) private _nonces;
 
-    // Total staked
-    uint256 public totalSupply;
-    // User address => staked amount
-    mapping(address => uint256) public balanceOf;
-
-    constructor()  EIP712("HashCastGateway", "1.0.0"){
-        // address _stakingToken;
-        // address _rewardToken;
-        owner = msg.sender;
-        // stakingToken = IERC20(_stakingToken);
-        // rewardsToken = IERC20(_rewardToken);
+    constructor(address _karmaToken)  EIP712("HashCastGateway", "1.0.0") {
+        _setupOwner(msg.sender);
+        karmaToken = IERC20(_karmaToken);
     }
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "not authorized");
-        _;
+     /// @dev Returns whether owner can be set in the given execution context.
+    function _canSetOwner() internal view virtual override returns (bool) {
+        return msg.sender == owner();
     }
 
-    modifier updateReward(address _account) {
-        rewardPerTokenStored = rewardPerToken();
-        updatedAt = lastTimeRewardApplicable();
-
-        if (_account != address(0)) {
-            rewards[_account] = earned(_account);
-            userRewardPerTokenPaid[_account] = rewardPerTokenStored;
-        }
-
-        _;
+    function nonces(address owner) public view returns (uint256) {
+        return _nonces[owner].current();
     }
 
-
-    function verifyEddsa(   bytes32 k,
-        bytes32 r,
-        bytes32 s,
-        bytes memory m) internal pure returns (bool){
-         return Ed25519.verify(k, r, s, m);
+    function _useNonce(address owner) internal returns (uint256 current) {
+        Counters.Counter storage nonce = _nonces[owner];
+        current = nonce.current();
+        nonce.increment();
+    }
+  
+    function getVirtualAddress(bytes32 pubkey) public pure returns(address){
+        return  Ed25519.getVirtualAddress(pubkey);
     }
 
     //TODO: this should be only owner to prevent sybil of claiming many addresses and upvoting
     // A better solution is if this is deployed on Optimism and check the key registry contract to make sure 
     // the address has registered with the app_fid !
-    function claim(bytes32 k, bytes32 r, bytes32 s) public {
-        uint256 nonce = edPubKeyNonce[k];
-        console.logBytes32(_domainSeparatorV4());
-        console.logBytes32(k);
-        console.log(block.chainid);
+    function claim(IHashCastKarma.ClaimRequest calldata c) public {
+        address vaddress = Ed25519.getVirtualAddress(c.k);
+        require(vaddress == c.from, "invalid address");
+        uint256 nonce = _useNonce(vaddress);
+        require(nonce == c.nonce, "invalid nonce");
+        
+        // console.logBytes32(_domainSeparatorV4());
+        // console.logBytes32(k);
+        // console.log(block.chainid);
         bytes memory digest = abi.encodePacked(_hashTypedDataV4(keccak256(abi.encode(
             //TODO: need replay protection on the struct
-          keccak256("Claim(bytes32 address,uint256 nonce)"),
-          k,nonce))));
-        console.log("digest:");
-        console.logBytes(digest);
-        bool valid = verifyEddsa(k, r, s, digest);
+          keccak256("Claim(address from,uint256 nonce)"),
+          vaddress,nonce))));
+        // console.log("digest:");
+        // console.logBytes(digest);
+        bool valid = Ed25519.verify(c.k, c.r, c.s, digest);
         require(valid,"invalid signature");
-        console.log("VALID SIGNAUTE");
-        uint256 lastClaimBlock = edPubKeyBlockClaimBlock[k];
+        // console.log("VALID SIGNAUTE");
+        uint256 lastClaimBlock = edPubKeyBlockClaimBlock[vaddress];
         uint256 blockNumber = block.number;
         require(blockNumber > lastClaimBlock, "invalid block number");
         uint256 amount=0;
-        if(lastClaimBlock > 0){
+        if(lastClaimBlock == 0){
             amount=10;
         }else{           
             amount = (blockNumber - lastClaimBlock) * rewardPerBlock;                        
         }
-        //TODO:mint karma
-        edPubKeyBlockClaimBlock[k] = blockNumber; 
+        karmaToken.mintTo(vaddress,amount);
+        edPubKeyBlockClaimBlock[vaddress] = blockNumber; 
     }
 
-    //transfer to user or anything really
+
+    //TODO: thi should be a multicall that 1. permits the karamtoken the transfers the exact amount in a single context
     //to is a blake3 160 bit hash, so we can store it in an address field
-    function transferToCast(bytes32 k, string calldata to, uint256 amount, bytes32 r, bytes32  s) public {
-        bytes memory digest = abi.encodePacked(_hashTypedDataV4(keccak256(abi.encode(
-          keccak256("Transfer(uint256 amount,bytes32 from,string to)"),
-          amount,k,keccak256(abi.encodePacked(to))))));
-        console.log("digest:");
-        console.logBytes(digest);
-        bool valid = verifyEddsa(k, r, s, digest);
-        require(valid,"invalid signature");
+    function transferWithAuthorization(bytes32 k, uint160 to, uint256 amount, bytes32 r, bytes32  s) public {
+        // uint256 nonce = edPubKeyNonce[k];
+        // edPubKeyNonce[k]+=1;
+        // bytes memory digest = abi.encodePacked(_hashTypedDataV4(keccak256(abi.encode(
+        //   keccak256("Transfer(uint256 amount,bytes32 from,uint160 to,uint256 nonce)"),
+        //   amount,k,to,nonce))));
+        // console.log("digest:");
+        // console.logBytes(digest);
+        // bool valid = Ed25519.verify(k, r, s, digest);
+        // require(valid,"invalid signature");
+        // require(edPubKeyCastTransfer[address(to)]==0,"already transferred to cast");        
+        // edPubKeyCastTransfer[address(to)]=amount;
 
-        require(edPubKeyCastTransfer[to]==0,"already transferred to cast");
-
-        //TODO: transfer 
-
-        edPubKeyCastTransfer[to]=amount;
     }
 
-    function lastTimeRewardApplicable() public view returns (uint256) {
-        return _min(finishAt, block.timestamp);
-    }
+    //TODO: allow user to input message bytes to pull the karma on the message
+    // function pullKarma(){
 
-    function rewardPerToken() public view returns (uint256) {
-        if (totalSupply == 0) {
-            return rewardPerTokenStored;
-        }
-
-        return rewardPerTokenStored
-            + (rewardRate * (lastTimeRewardApplicable() - updatedAt) * 1e18)
-                / totalSupply;
-    }
-
-    function stake(uint256 _amount) external updateReward(msg.sender) {
-        require(_amount > 0, "amount = 0");
-        stakingToken.transferFrom(msg.sender, address(this), _amount);
-        balanceOf[msg.sender] += _amount;
-        totalSupply += _amount;
-    }
-
-    function withdraw(uint256 _amount) external updateReward(msg.sender) {
-        require(_amount > 0, "amount = 0");
-        balanceOf[msg.sender] -= _amount;
-        totalSupply -= _amount;
-        stakingToken.transfer(msg.sender, _amount);
-    }
-
-    function earned(address _account) public view returns (uint256) {
-        return (
-            (
-                balanceOf[_account]
-                    * (rewardPerToken() - userRewardPerTokenPaid[_account])
-            ) / 1e18
-        ) + rewards[_account];
-    }
-
-    function getReward() external updateReward(msg.sender) {
-        uint256 reward = rewards[msg.sender];
-        if (reward > 0) {
-            rewards[msg.sender] = 0;
-            rewardsToken.transfer(msg.sender, reward);
-        }
-    }
-
-    function setRewardsDuration(uint256 _duration) external onlyOwner {
-        require(finishAt < block.timestamp, "reward duration not finished");
-        duration = _duration;
-    }
-
-    function notifyRewardAmount(uint256 _amount)
-        external
-        onlyOwner
-        updateReward(address(0))
-    {
-        if (block.timestamp >= finishAt) {
-            rewardRate = _amount / duration;
-        } else {
-            uint256 remainingRewards = (finishAt - block.timestamp) * rewardRate;
-            rewardRate = (_amount + remainingRewards) / duration;
-        }
-
-        require(rewardRate > 0, "reward rate = 0");
-        require(
-            rewardRate * duration <= rewardsToken.balanceOf(address(this)),
-            "reward amount > balance"
-        );
-
-        finishAt = block.timestamp + duration;
-        updatedAt = block.timestamp;
-    }
-
-    function _min(uint256 x, uint256 y) private pure returns (uint256) {
-        return x <= y ? x : y;
-    }
+    // }
 }
 
 interface IERC20 {
@@ -213,4 +116,7 @@ interface IERC20 {
     function transferFrom(address sender, address recipient, uint256 amount)
         external
         returns (bool);
+        /// @dev Emitted when tokens are minted with `mintTo`
+    event TokensMinted(address indexed mintedTo, uint256 quantityMinted);
+    function mintTo(address to, uint256 amount) external;
 }
