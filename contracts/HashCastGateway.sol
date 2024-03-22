@@ -48,10 +48,8 @@ contract HashCastGateway is EIP712, Ownable{
     // A better solution is if this is deployed on Optimism and check the key registry contract to make sure 
     // the address has registered with the app_fid !
     function claim(IHashCastKarma.ClaimRequest calldata c) public {
-        address vaddress = Ed25519.getVirtualAddress(c.k);
-        require(vaddress == c.from, "invalid address");
-        uint256 nonce = _useNonce(vaddress);
-        require(nonce == c.nonce, "invalid nonce");
+        address vaddress = Ed25519.getVirtualAddress(c.pubkey);
+        uint256 nonce = _useNonce(vaddress);       
         
         // console.logBytes32(_domainSeparatorV4());
         // console.logBytes32(k);
@@ -62,7 +60,7 @@ contract HashCastGateway is EIP712, Ownable{
           vaddress,nonce))));
         // console.log("digest:");
         // console.logBytes(digest);
-        bool valid = Ed25519.verify(c.k, c.r, c.s, digest);
+        bool valid = Ed25519.verify(c.pubkey, c.r, c.s, digest);
         require(valid,"invalid signature");
         // console.log("VALID SIGNAUTE");
         uint256 lastClaimBlock = edPubKeyBlockClaimBlock[vaddress];
@@ -81,7 +79,8 @@ contract HashCastGateway is EIP712, Ownable{
 
     //TODO: thi should be a multicall that 1. permits the karamtoken the transfers the exact amount in a single context
     //to is a blake3 160 bit hash, so we can store it in an address field
-    function transferWithAuthorization(bytes32 k, uint160 to, uint256 amount, bytes32 r, bytes32  s) public {
+    function transferWithAuthorization(IHashCastKarma.TransferRequest calldata t) public {
+        karmaToken.transferWithAuthorization(t.pubkey,t.to,t.value,t.deadline,t.r,t.s);
         // uint256 nonce = edPubKeyNonce[k];
         // edPubKeyNonce[k]+=1;
         // bytes memory digest = abi.encodePacked(_hashTypedDataV4(keccak256(abi.encode(
@@ -119,4 +118,12 @@ interface IERC20 {
         /// @dev Emitted when tokens are minted with `mintTo`
     event TokensMinted(address indexed mintedTo, uint256 quantityMinted);
     function mintTo(address to, uint256 amount) external;
+    function transferWithAuthorization(
+        bytes32 pubkey,
+        address to,
+        uint256 value,
+        uint256 deadline,
+        bytes32 r,
+        bytes32 s
+    ) external;
 }

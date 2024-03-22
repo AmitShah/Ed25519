@@ -64,17 +64,15 @@ describe('HashCastGateway', () => {
         console.log("nonce:",nonce);
         const structHash = ethers.utils._TypedDataEncoder.hash(domain, types, {from:vaddress,nonce:nonce})
         console.log("structHash:",structHash.slice(2,));
-        // console.log("")
         const signature = ethers.utils.hexlify(ed25519.sign(structHash.slice(2,),sk));
         
-        console.log(signature);
+        console.log("signature:",signature);
         const [r, s] = [signature.substring(2, 66), signature.substring(66)];
         const claimRequest = {
-          from:vaddress,
-          nonce:nonce,
-          k:pk,
+          pubkey:pk,
           r:`0x${r}`,
-          s:`0x${s}`};
+          s:`0x${s}`
+        };
         const gasLimit = await gateway.estimateGas.claim(claimRequest);
         console.log("gasLimit:",gasLimit);
         const tx = await gateway.claim(claimRequest,{gasLimit:gasLimit}); 
