@@ -7,22 +7,20 @@ import "./libraries/Ed25519.sol";
 import "hardhat/console.sol";
 import "./interfaces/IHashCastKarma.sol";
 import "@thirdweb-dev/contracts/external-deps/openzeppelin/utils/Counters.sol";
+import "./interfaces/IFilter.sol";
+import "./interfaces/IKeyRegistry.sol";
 
 pragma experimental ABIEncoderV2;
 
-contract HashCastGateway is EIP712, Ownable{
+contract AccessRegistry is EIP712, Ownable{
     using Counters for Counters.Counter;
-    IERC20 public immutable karmaToken;
-
-    //the linear emission rate of rewards over time
-    uint256 public rewardPerBlock;
-    mapping(address=>uint256) edPubKeyBlockClaimBlock;
-    mapping(address=>uint256) edPubKeyCastTransfer;
     mapping(address => Counters.Counter) private _nonces;
+    mapping(address=>IFilter) _filters;
+    IKeyRegistry private _keyRegistry;
 
-    constructor(address _karmaToken)  EIP712("HashCastGateway", "1.0.0") {
+    constructor(address _keyRegistryAddress)  EIP712("AccessRegistry", "1.0.0") {
         _setupOwner(msg.sender);
-        karmaToken = IERC20(_karmaToken);
+        _keyRegistry = IKeyRegistry(_keyRegistryAddress);
     }
 
      /// @dev Returns whether owner can be set in the given execution context.
@@ -44,49 +42,29 @@ contract HashCastGateway is EIP712, Ownable{
         return  Ed25519.getVirtualAddress(pubkey);
     }
 
-    //TODO: this should be only owner to prevent sybil of claiming many addresses and upvoting
-    // A better solution is if this is deployed on Optimism and check the key registry contract to make sure 
-    // the address has registered with the app_fid !
-    function claim(IHashCastKarma.ClaimRequest calldata c) public {
+    function addFilter(IHashCastKarma.ClaimRequest calldata c) public {
         address vaddress = Ed25519.getVirtualAddress(c.pubkey);
-        uint256 nonce = _useNonce(vaddress);       
-        
-        // console.logBytes32(_domainSeparatorV4());
-        // console.logBytes32(k);
-        // console.log(block.chainid);
+        uint256 nonce = _useNonce(vaddress);    
+        uint256 fid = 0; //this should be in the passed messagedata proto buf   
+        IKeyRegistry.KeyData memory kd = _keyRegistry.keyDataOf(fid, abi.encodePacked(c.pubkey));
+        require(kd.state == IKeyRegistry.KeyState.ADDED, "");
+
         bytes memory digest = abi.encodePacked(_hashTypedDataV4(keccak256(abi.encode(
             //TODO: need replay protection on the struct
           keccak256("Claim(address from,uint256 nonce)"),
           vaddress,nonce))));
-        // console.log("digest:");
-        // console.logBytes(digest);
+
         bool valid = Ed25519.verify(c.pubkey, c.r, c.s, digest);
         require(valid,"invalid signature");
-        // console.log("VALID SIGNAUTE");
-        uint256 lastClaimBlock = edPubKeyBlockClaimBlock[vaddress];
-        uint256 blockNumber = block.number;
-        require(blockNumber > lastClaimBlock, "invalid block number");
-        uint256 amount=0;
-        if(lastClaimBlock == 0){
-            amount=10;
-        }else{           
-            amount = (blockNumber - lastClaimBlock) * rewardPerBlock;                        
-        }
-        karmaToken.mintTo(vaddress,amount);
-        edPubKeyBlockClaimBlock[vaddress] = blockNumber; 
+
+        //set the cast hash to use the filter
+        _filters[vaddress] = IFilter(address(0)); 
     }
 
 
-    //TODO: thi should be a multicall that 1. permits the karamtoken the transfers the exact amount in a single context
-    //to is a blake3 160 bit hash, so we can store it in an address field
-    function transferWithAuthorization(IHashCastKarma.TransferRequest calldata t) public {
-        karmaToken.transferWithAuthorization(t.pubkey,t.to,t.value,t.deadline,t.r,t.s);
+    function removeFilter() public{
+
     }
-
-    //TODO: allow user to input message bytes to pull the karma on the message
-    // function pullKarma(){
-
-    // }
 }
 
 interface IERC20 {
