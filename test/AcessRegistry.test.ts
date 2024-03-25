@@ -108,9 +108,10 @@ describe('AccessRegistry', () => {
           domain.verifyingContract = ar.address;
           const vaddress = await ar.getVirtualAddress(public_key);
           const nonce = await ar.nonces(vaddress);
+          const filter = ethers.utils.getAddress(`0x0000000000000000000000000000000000000001`);
           console.log("vaddress:",vaddress);
           console.log("nonce:",nonce);
-          const structHash = ethers.utils._TypedDataEncoder.hash(domain, types, {from:vaddress,filter:"0x0000000000000000000000000000000000000001",nonce:nonce})
+          const structHash = ethers.utils._TypedDataEncoder.hash(domain, types, {from:vaddress,filter:filter,nonce:nonce})
           console.log("structHash:",structHash.slice(2,));
           
           const signature = (await ed25519Signer.signMessageHash(ethers.utils.arrayify(structHash)))._unsafeUnwrap();
@@ -122,24 +123,18 @@ describe('AccessRegistry', () => {
             Buffer.from(signature.slice(32, 64))
           ];
       
-          //const signature = await signFarcasterMessage(ed25519Signer, message_data);
-         
-      
           const message = (MessageData.encode(message_data).finish());
-          
-          const gasLimit = await ar.estimateGas.verifyCastAddMessage(
-            public_key,
+          const addFilter = {
+            pubkey:public_key,
+            filter,
             r,
             s,
             message
-          );       
+          }          
+          console.log("call function");
+          const gasLimit = await ar.estimateGas.addFilter(addFilter);       
           console.log("gasLimit:",gasLimit);
-          const tx = await ar.verifyCastAddMessage(
-            public_key,
-            r,
-            s,
-            message
-          );       
+          const tx = await ar.addFilter(addFilter);       
           console.log(tx); 
     })
   
