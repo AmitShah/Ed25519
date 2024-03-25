@@ -16,15 +16,19 @@ dotenv.config()
 const { expect } = chai;
 
 const domain = {
-    name: 'HashCastGateway',
+    name: 'AccessRegistry',
     version: '1.0.0',
     chainId: 31337,
     verifyingContract: ethers.constants.AddressZero
   }
   
   const types = {
-    Claim: [{
+    AddFilter: [{
         name: 'from',
+        type: 'address'
+      },
+      {
+        name:'filter',
         type: 'address'
       },
       {
@@ -33,7 +37,6 @@ const domain = {
       }
     ]
   }
-
 describe('AccessRegistry', () => {
     let ar: AccessRegistry
     let owner: SignerWithAddress
@@ -82,7 +85,7 @@ describe('AccessRegistry', () => {
       }
     it(`can add filter on chain`, async ()=>{
         expect(ar).is.not.null;
-        
+
         const ed25519Signer = Factories.Ed25519Signer.build();
         const message_data: MessageData = {
             type: MessageType.CAST_ADD,
@@ -101,23 +104,40 @@ describe('AccessRegistry', () => {
               embeds: [],
             }
           };
-      
-          const signature = await signFarcasterMessage(ed25519Signer, message_data);
           const public_key = (await ed25519Signer.getSignerKey())._unsafeUnwrap();
+          domain.verifyingContract = ar.address;
+          const vaddress = await ar.getVirtualAddress(public_key);
+          const nonce = await ar.nonces(vaddress);
+          console.log("vaddress:",vaddress);
+          console.log("nonce:",nonce);
+          const structHash = ethers.utils._TypedDataEncoder.hash(domain, types, {from:vaddress,filter:"0x0000000000000000000000000000000000000001",nonce:nonce})
+          console.log("structHash:",structHash.slice(2,));
+          
+          const signature = (await ed25519Signer.signMessageHash(ethers.utils.arrayify(structHash)))._unsafeUnwrap();
+      
+          const [
+            r, s
+          ] = [
+            Buffer.from(signature.slice(0, 32)),
+            Buffer.from(signature.slice(32, 64))
+          ];
+      
+          //const signature = await signFarcasterMessage(ed25519Signer, message_data);
+         
       
           const message = (MessageData.encode(message_data).finish());
           
           const gasLimit = await ar.estimateGas.verifyCastAddMessage(
             public_key,
-            signature.r,
-            signature.s,
+            r,
+            s,
             message
           );       
           console.log("gasLimit:",gasLimit);
           const tx = await ar.verifyCastAddMessage(
             public_key,
-            signature.r,
-            signature.s,
+            r,
+            s,
             message
           );       
           console.log(tx); 

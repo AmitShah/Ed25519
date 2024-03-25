@@ -50,22 +50,36 @@ contract AccessRegistry is EIP712, Ownable{
         bytes32 signature_s,
         bytes memory message
     ) external {
+    address vaddress = Ed25519.getVirtualAddress(public_key);
+    uint256 nonce = _useNonce(vaddress);       
+    bytes memory digest = abi.encodePacked(_hashTypedDataV4(keccak256(abi.encode(
+        //TODO: need replay protection on the struct
+        keccak256("AddFilter(address from,address filter,uint256 nonce)"),
+        vaddress,address(0x1),nonce))));
+    console.log("digest:");
+    console.logBytes(digest);
+    bool valid = Ed25519.verify(public_key, signature_r, signature_s, digest);
+    require(valid,"invalid signature");
+
     (MessageData memory message_data, bytes memory hash) = _verifyMessage(
       public_key,
       signature_r,
       signature_s,
       message
     );
-    IKeyRegistry.KeyData memory kd =  _keyRegistry.keyDataOf(message_data.fid, abi.encodePacked(public_key));
-    require(kd.state==IKeyRegistry.KeyState.ADDED,"key unassigned");
 
-    if (message_data.type_ != MessageType.MESSAGE_TYPE_CAST_ADD) {
-      revert();
-    }
+    IKeyRegistry.KeyData memory kd =  _keyRegistry.keyDataOf(message_data.fid, abi.encodePacked(public_key));
+    //require(kd.state==IKeyRegistry.KeyState.ADDED,"key unassigned");
+    
     address castAddress;
     assembly {
       castAddress := mload(add(hash,20))
     } 
+
+   
+   
+
+
     _filters[castAddress] = address(0x1);
   }
 
@@ -78,18 +92,18 @@ contract AccessRegistry is EIP712, Ownable{
     // Calculate Blake3 hash of FC message (first 20 bytes)
     bytes memory message_hash = Blake3.hash(message, 20);
 
-    // Verify signature
-    bool valid = Ed25519.verify(
-      public_key,
-      signature_r,
-      signature_s,
-      message_hash
-    );
+    // // Verify signature
+    // bool valid = Ed25519.verify(
+    //   public_key,
+    //   signature_r,
+    //   signature_s,
+    //   message_hash
+    // );
 
-    if (!valid) {
-        console.log("invalid message");
-      revert();
-    }
+    // if (!valid) {
+    //     console.log("invalid message");
+    //   revert();
+    // }
 
     (
       bool success,
