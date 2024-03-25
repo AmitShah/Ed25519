@@ -4,19 +4,21 @@ pragma solidity ^0.8.24;
 import "@thirdweb-dev/contracts/external-deps/openzeppelin/utils/cryptography/EIP712.sol";
 import "@thirdweb-dev/contracts/extension/Ownable.sol";
 import "./libraries/Ed25519.sol";
-import "hardhat/console.sol";
-import "./interfaces/IHashCastKarma.sol";
+import "./libraries/Blake3.sol";
 import "@thirdweb-dev/contracts/external-deps/openzeppelin/utils/Counters.sol";
 import "./interfaces/IFilter.sol";
 import "./interfaces/IKeyRegistry.sol";
+import "./protobufs/message.proto.sol";
+import "hardhat/console.sol";
 
 pragma experimental ABIEncoderV2;
 
-contract AccessRegistry is EIP712, Ownable{
+contract AccessRegistry is EIP712, Ownable{    
     using Counters for Counters.Counter;
     mapping(address => Counters.Counter) private _nonces;
     mapping(address=>IFilter) _filters;
     IKeyRegistry private _keyRegistry;
+
 
     constructor(address _keyRegistryAddress)  EIP712("AccessRegistry", "1.0.0") {
         _setupOwner(msg.sender);
@@ -42,23 +44,79 @@ contract AccessRegistry is EIP712, Ownable{
         return  Ed25519.getVirtualAddress(pubkey);
     }
 
-    function addFilter(IHashCastKarma.ClaimRequest calldata c) public {
-        address vaddress = Ed25519.getVirtualAddress(c.pubkey);
-        uint256 nonce = _useNonce(vaddress);    
-        uint256 fid = 0; //this should be in the passed messagedata proto buf   
-        IKeyRegistry.KeyData memory kd = _keyRegistry.keyDataOf(fid, abi.encodePacked(c.pubkey));
-        require(kd.state == IKeyRegistry.KeyState.ADDED, "");
+    function verifyCastAddMessage(
+        bytes32 public_key,
+        bytes32 signature_r,
+        bytes32 signature_s,
+        bytes memory message
+    ) external pure {
+    MessageData memory message_data = _verifyMessage(
+      public_key,
+      signature_r,
+      signature_s,
+      message
+    );
+    console.log("here");
+    console.log(message_data.fid);
 
-        bytes memory digest = abi.encodePacked(_hashTypedDataV4(keccak256(abi.encode(
-            //TODO: need replay protection on the struct
-          keccak256("Claim(address from,uint256 nonce)"),
-          vaddress,nonce))));
+    if (message_data.type_ != MessageType.MESSAGE_TYPE_CAST_ADD) {
+      revert();
+    }
+    console.log("finish ok");
+  }
 
-        bool valid = Ed25519.verify(c.pubkey, c.r, c.s, digest);
-        require(valid,"invalid signature");
+    function _verifyMessage(
+        bytes32 public_key,
+        bytes32 signature_r,
+        bytes32 signature_s,
+        bytes memory message
+    ) internal pure returns(MessageData memory) {
+    // Calculate Blake3 hash of FC message (first 20 bytes)
+    bytes memory message_hash = Blake3.hash(message, 20);
 
-        //set the cast hash to use the filter
-        _filters[vaddress] = IFilter(address(0)); 
+    // Verify signature
+    bool valid = Ed25519.verify(
+      public_key,
+      signature_r,
+      signature_s,
+      message_hash
+    );
+
+    if (!valid) {
+        console.log("invalid message");
+      revert();
+    }
+
+    (
+      bool success,
+      ,
+      MessageData memory message_data
+    ) = MessageDataCodec.decode(0, message, uint64(message.length));
+
+    if (!success) {
+      revert();
+    }
+
+    return message_data;
+  }
+
+    function addFilter() public {
+        // address vaddress = Ed25519.getVirtualAddress(c.pubkey);
+        // uint256 nonce = _useNonce(vaddress);    
+        // uint256 fid = 0; //this should be in the passed messagedata proto buf   
+        // IKeyRegistry.KeyData memory kd = _keyRegistry.keyDataOf(fid, abi.encodePacked(c.pubkey));
+        // require(kd.state == IKeyRegistry.KeyState.ADDED, "");
+
+        // bytes memory digest = abi.encodePacked(_hashTypedDataV4(keccak256(abi.encode(
+        //     //TODO: need replay protection on the struct
+        //   keccak256("Claim(address from,uint256 nonce)"),
+        //   vaddress,nonce))));
+
+        // bool valid = Ed25519.verify(c.pubkey, c.r, c.s, digest);
+        // require(valid,"invalid signature");
+
+        // //set the cast hash to use the filter
+        // _filters[vaddress] = IFilter(address(0)); 
     }
 
 

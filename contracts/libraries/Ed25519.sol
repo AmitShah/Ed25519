@@ -278,7 +278,7 @@ library Ed25519 {
         bytes32 r,
         bytes32 s,
         bytes memory m
-    ) internal pure returns (bool) {
+    ) external pure returns (bool) {
             uint256 hh;
             unchecked {
                 
@@ -887,7 +887,7 @@ library Ed25519 {
         }
     }
 
-    function getVirtualAddress(bytes32 publicKey) internal pure returns (address addr) {
+    function getVirtualAddress(bytes32 publicKey) external pure returns (address addr) {
         return address(uint160(uint256(keccak256(abi.encodePacked(publicKey)))));
     }
 }

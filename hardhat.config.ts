@@ -9,13 +9,17 @@ const config: HardhatUserConfig = {
     compilers: [{ version: '0.8.24', settings: {
       optimizer: {
         enabled: true,
-        runs: 2000,
+        runs: 10000,
       },
+      
      } }],
     
   },
   networks: {
     hardhat: {
+      forking: {
+        url:`https://opt-mainnet.g.alchemy.com/v2/sJqLM3VfAug0vSoR-p9V_tLFpo_2LJ8k`
+      }
       //allowUnlimitedContractSize: true,
     },
   },
