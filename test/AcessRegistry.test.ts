@@ -82,7 +82,7 @@ describe('AccessRegistry', () => {
       }
     it(`can add filter on chain`, async ()=>{
         expect(ar).is.not.null;
-
+        
         const ed25519Signer = Factories.Ed25519Signer.build();
         const message_data: MessageData = {
             type: MessageType.CAST_ADD,
@@ -106,7 +106,14 @@ describe('AccessRegistry', () => {
           const public_key = (await ed25519Signer.getSignerKey())._unsafeUnwrap();
       
           const message = (MessageData.encode(message_data).finish());
-          console.log(message);
+          
+          const gasLimit = await ar.estimateGas.verifyCastAddMessage(
+            public_key,
+            signature.r,
+            signature.s,
+            message
+          );       
+          console.log("gasLimit:",gasLimit);
           const tx = await ar.verifyCastAddMessage(
             public_key,
             signature.r,

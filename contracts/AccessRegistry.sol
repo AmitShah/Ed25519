@@ -16,7 +16,7 @@ pragma experimental ABIEncoderV2;
 contract AccessRegistry is EIP712, Ownable{    
     using Counters for Counters.Counter;
     mapping(address => Counters.Counter) private _nonces;
-    mapping(address=>IFilter) _filters;
+    mapping(address=>address) _filters;
     IKeyRegistry private _keyRegistry;
 
 
@@ -49,20 +49,24 @@ contract AccessRegistry is EIP712, Ownable{
         bytes32 signature_r,
         bytes32 signature_s,
         bytes memory message
-    ) external pure {
-    MessageData memory message_data = _verifyMessage(
+    ) external {
+    (MessageData memory message_data, bytes memory hash) = _verifyMessage(
       public_key,
       signature_r,
       signature_s,
       message
     );
-    console.log("here");
-    console.log(message_data.fid);
+    IKeyRegistry.KeyData memory kd =  _keyRegistry.keyDataOf(message_data.fid, abi.encodePacked(public_key));
+    require(kd.state==IKeyRegistry.KeyState.ADDED,"key unassigned");
 
     if (message_data.type_ != MessageType.MESSAGE_TYPE_CAST_ADD) {
       revert();
     }
-    console.log("finish ok");
+    address castAddress;
+    assembly {
+      castAddress := mload(add(hash,20))
+    } 
+    _filters[castAddress] = address(0x1);
   }
 
     function _verifyMessage(
@@ -70,7 +74,7 @@ contract AccessRegistry is EIP712, Ownable{
         bytes32 signature_r,
         bytes32 signature_s,
         bytes memory message
-    ) internal pure returns(MessageData memory) {
+    ) internal pure returns(MessageData memory, bytes memory) {
     // Calculate Blake3 hash of FC message (first 20 bytes)
     bytes memory message_hash = Blake3.hash(message, 20);
 
@@ -97,7 +101,7 @@ contract AccessRegistry is EIP712, Ownable{
       revert();
     }
 
-    return message_data;
+    return (message_data,message_hash);
   }
 
     function addFilter() public {
