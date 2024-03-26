@@ -10,7 +10,6 @@ import "./interfaces/IFilter.sol";
 import "./interfaces/IKeyRegistry.sol";
 import "./interfaces/IAccessRegistry.sol";
 import "./protobufs/message.proto.sol";
-
 // import "hardhat/console.sol";
 
 pragma experimental ABIEncoderV2;
@@ -65,7 +64,7 @@ contract AccessRegistry is EIP712, Ownable{
     );
 
     IKeyRegistry.KeyData memory kd =  _keyRegistry.keyDataOf(message_data.fid, abi.encodePacked(f.pubkey));
-    //TODO:require(kd.state==IKeyRegistry.KeyState.ADDED,"key unassigned");
+    require(kd.state==IKeyRegistry.KeyState.ADDED,"key unassigned");
     
     address castAddress;
     assembly {

@@ -2,6 +2,10 @@ import '@nomiclabs/hardhat-waffle'
 import '@typechain/hardhat'
 import { HardhatUserConfig } from 'hardhat/types'
 import "hardhat-gas-reporter"
+import dotenv from "dotenv"
+
+dotenv.config()
+
 
 const config: HardhatUserConfig = {
   defaultNetwork: 'hardhat',
@@ -22,6 +26,10 @@ const config: HardhatUserConfig = {
       }
       //allowUnlimitedContractSize: true,
     },
+    sepolia: {
+      url: "https://sepolia.base.org",
+      accounts: [process.env.PK as string]
+    }
   },
 }
 
