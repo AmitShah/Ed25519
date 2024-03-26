@@ -11,6 +11,9 @@ import dotenv from 'dotenv';
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { CastAddBody, Factories, FarcasterNetwork, MessageData, MessageType, ReactionType, makeCastAdd, makeMessageHash,Ed25519Signer } from '@farcaster/core';
 
+import { encrypt, decrypt, PrivateKey, ECIES_CONFIG} from 'eciesjs'
+
+
 dotenv.config()
 
 const { expect } = chai;
@@ -136,6 +139,25 @@ describe('AccessRegistry', () => {
           console.log("gasLimit:",gasLimit);
           const tx = await ar.addFilter(addFilter);       
           console.log(tx); 
+    })
+
+    it(`it can encrypt using signer pubkey and ECIES`,async ()=>{
+        //this is an example of assymetric encryption that can be performed by a caster to every receiver in the subreddit
+        //The numerous problems related to this mechanism:
+        //1. each posts causes fanout
+        //2. user has to login before content is decrypted so any indexable properties have to be at a higher abstraction
+        const sk = ed25519.utils.randomPrivateKey();
+        const pk = ethers.utils.hexlify(ed25519.getPublicKey(sk));
+        ECIES_CONFIG.ellipticCurve = "ed25519";       
+        const encrypted = encrypt(pk, ethers.utils.toUtf8Bytes(`hello world`));
+        //Note: The encrypted data would be stored in the DB per cast * subreddit participant cardinality
+        
+
+        //Each user would login to being decrypting the queue of posts, this could be stored on local storage
+        const decrypted = decrypt(sk,encrypted)
+        const decoded = new TextDecoder().decode(decrypted);
+        expect(decoded).to.eq(`hello world`);
+       
     })
   
 })
