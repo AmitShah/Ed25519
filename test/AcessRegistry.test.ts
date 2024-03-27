@@ -9,7 +9,7 @@ import { Connection, PublicKey, clusterApiUrl, RpcResponseAndContext, SignatureR
 import {ed25519} from '@noble/curves/ed25519';
 import dotenv from 'dotenv'; 
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { CastAddBody, Factories, FarcasterNetwork, MessageData, MessageType, ReactionType, makeCastAdd, makeMessageHash,Ed25519Signer } from '@farcaster/core';
+import { CastAddBody, Factories, FarcasterNetwork, MessageData, MessageType, ReactionType, makeCastAdd, makeMessageHash,Ed25519Signer, NobleEd25519Signer } from '@farcaster/core';
 
 import { encrypt, decrypt, PrivateKey, ECIES_CONFIG} from 'eciesjs'
 
@@ -177,8 +177,10 @@ describe('AccessRegistry', () => {
 
     it(`can join cast on chain`, async ()=>{
         expect(ar).is.not.null;
-
-        const ed25519Signer = Factories.Ed25519Signer.build();
+        
+        //const ed25519Signer = Factories.Ed25519Signer.build();
+        const sk = ed25519.utils.randomPrivateKey();
+        const ed25519Signer = new NobleEd25519Signer(sk);
         const message_data: MessageData = {
             type: MessageType.CAST_ADD,
             fid,
@@ -198,7 +200,7 @@ describe('AccessRegistry', () => {
           };
         const message_hash = (await makeMessageHash(message_data))._unsafeUnwrap();
         const castHash = ethers.utils.hexlify(message_hash);
-        const public_key = (await ed25519Signer.getSignerKey())._unsafeUnwrap();
+        const public_key =(await ed25519Signer.getSignerKey())._unsafeUnwrap();
         domain.verifyingContract = ar.address;
         const vaddress = await ar.getVirtualAddress(public_key);
         const nonce = await ar.nonces(vaddress);
@@ -207,7 +209,7 @@ describe('AccessRegistry', () => {
         console.log("nonce:",nonce);
         const structHash = ethers.utils._TypedDataEncoder.hash(domain, {JoinCast:types.JoinCast}, { casthash:castHash,vaddress:vaddress,nonce:nonce})
         console.log("structHash:",structHash.slice(2,));
-          
+        //const signature = ethers.utils.hexlify(ed25519.sign(ethers.utils.arrayify(structHash),sk))
         const signature = (await ed25519Signer.signMessageHash(ethers.utils.arrayify(structHash)))._unsafeUnwrap();
       
         const [
@@ -224,7 +226,13 @@ describe('AccessRegistry', () => {
         const tx = await ar.joinPrivateCast(castHash,public_key,r,s,{gasLimit});       
         console.log("tx:",tx);       
         const members = await ar.getPrivateCastMembers(castHash);
-        console.log(members); 
+        expect(members).length(1);
+        const messageBytes = (MessageData.encode(message_data).finish());
+        const encrypted = await encrypt(members[0], messageBytes);
+        const wireData = ethers.utils.hexlify(encrypted);
+        const decrypted = await decrypt(sk, ethers.utils.arrayify(wireData));
+        expect(ethers.utils.hexlify(decrypted)).to.eq(ethers.utils.hexlify(messageBytes));
+
     })
   
 })
