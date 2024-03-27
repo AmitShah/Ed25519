@@ -38,7 +38,22 @@ const domain = {
           name:'nonce',
           type: 'uint256'
       }
-    ]
+    ],
+    //address casthash,address vaddress,uint256 nonce
+    JoinCast: [{
+        name: 'casthash',
+        type: 'address'
+      },
+      {
+        name:'vaddress',
+        type: 'address'
+      },
+      {
+          name:'nonce',
+          type: 'uint256'
+      }
+    ],
+
   }
 describe('AccessRegistry', () => {
     let ar: AccessRegistry
@@ -114,7 +129,7 @@ describe('AccessRegistry', () => {
           const filter = ethers.utils.getAddress(`0x0000000000000000000000000000000000000001`);
           console.log("vaddress:",vaddress);
           console.log("nonce:",nonce);
-          const structHash = ethers.utils._TypedDataEncoder.hash(domain, types, {from:vaddress,filter:filter,nonce:nonce})
+          const structHash = ethers.utils._TypedDataEncoder.hash(domain, {AddFilter:types.AddFilter}, {from:vaddress,filter:filter,nonce:nonce})
           console.log("structHash:",structHash.slice(2,));
           
           const signature = (await ed25519Signer.signMessageHash(ethers.utils.arrayify(structHash)))._unsafeUnwrap();
@@ -158,6 +173,58 @@ describe('AccessRegistry', () => {
         const decoded = new TextDecoder().decode(decrypted);
         expect(decoded).to.eq(`hello world`);
        
+    })
+
+    it(`can join cast on chain`, async ()=>{
+        expect(ar).is.not.null;
+
+        const ed25519Signer = Factories.Ed25519Signer.build();
+        const message_data: MessageData = {
+            type: MessageType.CAST_ADD,
+            fid,
+            timestamp,
+            network: FarcasterNetwork.MAINNET,
+            castAddBody: {
+              embedsDeprecated: [],
+              mentions: [1],
+              parentCastId: {
+                fid,
+                hash,
+              },
+              text: '@dwr.eth dau goes brrr',
+              mentionsPositions: [1],
+              embeds: [],
+            }
+          };
+        const message_hash = (await makeMessageHash(message_data))._unsafeUnwrap();
+        const castHash = ethers.utils.hexlify(message_hash);
+        const public_key = (await ed25519Signer.getSignerKey())._unsafeUnwrap();
+        domain.verifyingContract = ar.address;
+        const vaddress = await ar.getVirtualAddress(public_key);
+        const nonce = await ar.nonces(vaddress);
+        
+        console.log("vaddress:",vaddress);
+        console.log("nonce:",nonce);
+        const structHash = ethers.utils._TypedDataEncoder.hash(domain, {JoinCast:types.JoinCast}, { casthash:castHash,vaddress:vaddress,nonce:nonce})
+        console.log("structHash:",structHash.slice(2,));
+          
+        const signature = (await ed25519Signer.signMessageHash(ethers.utils.arrayify(structHash)))._unsafeUnwrap();
+      
+        const [
+        r, s
+        ] = [
+        Buffer.from(signature.slice(0, 32)),
+        Buffer.from(signature.slice(32, 64))
+        ];
+    
+        
+        console.log("call function");
+        const gasLimit = await ar.estimateGas.joinPrivateCast(castHash,public_key,r,s);       
+        console.log("gasLimit:",gasLimit);
+        const tx = await ar.joinPrivateCast(castHash,public_key,r,s,{gasLimit});       
+        console.log("tx:",tx);       
+        const members = await ar.getPrivateCastMembers(castHash);
+        console.log(members); 
     })
   
 })

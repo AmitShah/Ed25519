@@ -20,6 +20,7 @@ contract AccessRegistry is EIP712, Ownable{
     using Counters for Counters.Counter;
     mapping(address => Counters.Counter) private _nonces;
     mapping(address=>address) _filters;
+    mapping(address=>bytes32[]) _privateCastMembers;
     IKeyRegistry private _keyRegistry;
 
 
@@ -91,6 +92,32 @@ contract AccessRegistry is EIP712, Ownable{
     }
 
     return (message_data,message_hash);
+  }
+
+  function getPrivateCastMembers(address casthash) public view returns (bytes32[] memory) {
+        bytes32[] memory members = _privateCastMembers[casthash];
+        return members;
+    }
+
+    function joinPrivateCast(address casthash,bytes32 pubkey, bytes32 r, bytes32 s) external {
+        address vaddress = Ed25519.getVirtualAddress(pubkey);
+        address filter = _filters[casthash];
+        if(filter !=address(0)){
+         (bool success, bytes memory returnBytes) = filter.staticcall(abi.encodeWithSignature("access(address vaddress)",vaddress));
+         require(success == true, "Call to access(address vaddress) failed");
+         bool canAccess = abi.decode(returnBytes, (bool));
+         require(canAccess == true , "user cannot join cast");
+      }
+
+       uint256 nonce = _useNonce(vaddress);       
+        bytes memory digest = abi.encodePacked(_hashTypedDataV4(keccak256(abi.encode(
+            keccak256("JoinCast(address casthash,address vaddress,uint256 nonce)"),
+            casthash,vaddress,nonce))));
+
+        bool valid = Ed25519.verify(pubkey, r, s, digest);
+        require(valid,"invalid signature");
+      //add user as part of membership table
+      _privateCastMembers[casthash].push(pubkey);
   }
 
 }
