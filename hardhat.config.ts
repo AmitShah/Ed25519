@@ -1,11 +1,9 @@
-import '@nomiclabs/hardhat-waffle'
-import '@typechain/hardhat'
+// import '@nomiclabs/hardhat-waffle'
 import { HardhatUserConfig } from 'hardhat/types'
 import "hardhat-gas-reporter"
+import '@typechain/hardhat'
 import dotenv from "dotenv"
-
 dotenv.config()
-
 
 const config: HardhatUserConfig = {
   defaultNetwork: 'hardhat',
@@ -21,9 +19,9 @@ const config: HardhatUserConfig = {
   },
   networks: {
     hardhat: {
-      forking: {
-        url:`https://opt-mainnet.g.alchemy.com/v2/sJqLM3VfAug0vSoR-p9V_tLFpo_2LJ8k`
-      }
+      // forking: {
+      //   url:`https://opt-mainnet.g.alchemy.com/v2/sJqLM3VfAug0vSoR-p9V_tLFpo_2LJ8k`
+      // }
       //allowUnlimitedContractSize: true,
     },
     sepolia: {
